@@ -1,0 +1,11 @@
+{
+  "name": "sleepless-stormpath",
+  "version": "1.0.0",
+  "description": "Interface to the Stormpath authentication API",
+  "author": {
+    "name": "Joe Hitchens",
+    "email": "joe@sleepless.com",
+    "url": "http://sleepless.com"
+  },
+  "main": "./stormpath.js",
+}
