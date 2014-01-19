@@ -3,7 +3,7 @@ var fs = require("fs");
 var url = require("url");
 var util = require("util");
 var https = require("https");
-var qstr = require("qstr");
+var querystring = require("querystring");
 var crypto = require("crypto");
 
 var I = function(o) { return util.inspect(o); }
@@ -17,13 +17,13 @@ log(5);
 
 
 
-var makeOpts = function(opts) {
+var makeOpts = function(uri, opts) {
+	var u = url.parse(uri);
 	var o = {
-		host: "api.stormpath.com",
-		path: "/",
+		host: u.host || "api.stormpath.com",
+		path: u.path || url,
 		port: 443,
-		method: method,
-		auth: SP.apiId + ":" + SP.apiSecret,
+		auth: this.apiId + ":" + this.apiSecret,
 		headers: {
 			"Accept": "application/json",
 			"Content-Type": "application/json",
@@ -36,35 +36,37 @@ var makeOpts = function(opts) {
 }
 
 
-var load = function(opts, path, body, cb) {
-
-	opts.path = path;
+var load = function(opts, body, cb) {
 
 	var json = "";
 
 	var req = https.request(opts, function(res) {
+
+		//log(3, "res...");
 		res.setEncoding("utf8");
+
 		res.on("data", function(d) {
-			log("load data: "+d);
+			//log(3, "load data: "+d);
 			json += d; 
 		});
-	});
 
-	req.on("end", function() {
-		log(3, "load end");
-		var o = j2o(json);
-		if(o) {
-			log(3, "parse ok");
-			cb(null, o);
-			return;
-		}
-		log(3, "parse fail");
-		cb("invalid response from stormpath", null);
-	});
+		res.on("end", function() {
+			//log(3, "load end: "+json);
+			var o = j2o(json);
+			if(o) {
+				//log(3, "parse ok");
+				cb(null, o);
+				return;
+			}
+			log(3, "parse fail");
+			cb("invalid response from stormpath", null);
+		});
 
-	req.on("error", function(e) {
-		log(3, "load error "+e);
-		cb(e, null);
+		res.on("error", function(e) {
+			log(3, "load error "+e);
+			cb(e, null);
+		});
+
 	});
 
 	if(body && typeof body === "string") {
@@ -72,40 +74,42 @@ var load = function(opts, path, body, cb) {
 		req.write(body);
 	}
 	req.end();
-	log(3, "load sent");
+	//log(3, "load sent");
 }
 
 var get = function(path, params, cb) {
 	if(params) {
-		path += "?" + qstr.stringify(data);
+		path += "?" + querystring.stringify(data);
 	}
-	load(makeOpts({ method: "GET" }), path, null, cb);
+	load.call(this, makeOpts.call(this, path, { method: "GET" }), null, cb);
 }
 
 var post = function(path, job, cb) {
 	var body = job ? o2j(job) : null;
-	load(makeOpts({ method: "POST" }), path, body, cb);
+	load.call(this, makeOpts.call(this, path, { method: "POST" }), body, cb);
 }
 
 
-var getTenants = function(cb) {
-	get("/v1/tenants/current", null, function(reply) {
-		log(3, "get reply="+I(reply));
-	})
+var getTenant = function(path, cb) {
+	get.call(this, path, null, cb);
 }
 
+var getApplications = function(key, cb) {
+	get.call(this, "/v1/applications/"+key, null, cb);
+}
 
 module.exports = function(apiId, apiSecret) {
 	return {
 		apiId: apiId,
 		apiSecret: apiSecret,
-		getTenants: getTenants,
+		getApplications: getApplications,
+		getTenant: getTenant,
 	};
 };
 
 
 if(require.main === module) {
-	require("../test/test.js")
+	require("./test.js")
 }
 
 

@@ -7,5 +7,5 @@
     "email": "joe@sleepless.com",
     "url": "http://sleepless.com"
   },
-  "main": "./stormpath.js",
+  "main": "./stormpath.js"
 }
