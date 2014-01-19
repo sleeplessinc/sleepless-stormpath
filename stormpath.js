@@ -6,13 +6,13 @@ var https = require("https");
 var querystring = require("querystring");
 var crypto = require("crypto");
 
-var I = function(o) { return util.inspect(o); }
+var I = function(o) { return util.inspect(o, {depth:3}); }
 
 var j2o = function(j) { try { return JSON.parse(j) } catch(e) { return null } }
 var o2j = function(o) { try { return JSON.stringify(o) } catch(e) { return null } }
 
 var log5 = require("log5");
-var log = log5.mkLog("Stormpath");
+var log = log5.mkLog("Stormpath:");
 log(5);
 
 
@@ -21,7 +21,7 @@ var makeOpts = function(uri, opts) {
 	var u = url.parse(uri);
 	var o = {
 		host: u.host || "api.stormpath.com",
-		path: u.path || url,
+		path: u.path,
 		port: 443,
 		auth: this.apiId + ":" + this.apiSecret,
 		headers: {
@@ -42,70 +42,102 @@ var load = function(opts, body, cb) {
 
 	var req = https.request(opts, function(res) {
 
-		//log(3, "res...");
 		res.setEncoding("utf8");
 
 		res.on("data", function(d) {
-			//log(3, "load data: "+d);
+			// next chunk of the response has arrived
 			json += d; 
 		});
 
 		res.on("end", function() {
-			//log(3, "load end: "+json);
+			// reading from stormpath complete
+			var err = null;
 			var o = j2o(json);
 			if(o) {
-				//log(3, "parse ok");
-				cb(null, o);
-				return;
+				// json parsed ok
+				if(!o.code) {
+					// no error code, all is well
+					cb(null, o);
+					return;
+				}
+				else {
+					// error from stormpath
+					cb( o.developerMessage, null );
+				}
 			}
-			log(3, "parse fail");
-			cb("invalid response from stormpath", null);
+			cb("error parsing API response", null);
 		});
 
 		res.on("error", function(e) {
-			log(3, "load error "+e);
 			cb(e, null);
 		});
 
 	});
 
 	if(body && typeof body === "string") {
-		req.setEncoding("utf8");
 		req.write(body);
 	}
 	req.end();
-	//log(3, "load sent");
 }
 
 var get = function(path, params, cb) {
+	if(typeof params === "function") {
+		cb = params;
+		params = null;
+	}
 	if(params) {
-		path += "?" + querystring.stringify(data);
+		path += "?" + querystring.stringify(params);
 	}
 	load.call(this, makeOpts.call(this, path, { method: "GET" }), null, cb);
 }
 
 var post = function(path, job, cb) {
-	var body = job ? o2j(job) : null;
-	load.call(this, makeOpts.call(this, path, { method: "POST" }), body, cb);
+	load.call(this, makeOpts.call(this, path, { method: "POST" }), o2j(job), cb);
 }
 
 
-var getTenant = function(path, cb) {
-	get.call(this, path, null, cb);
-}
-
-var getApplications = function(key, cb) {
+var getApplication = function(key, cb) {
 	get.call(this, "/v1/applications/"+key, null, cb);
 }
 
-module.exports = function(apiId, apiSecret) {
-	return {
+var createAccount = function(app, job, cb) {
+	post.call(this, app.accounts.href, job, cb);
+}
+
+var authenticateAccount = function(app, username, password, cb) {
+	var sp = this;
+	var job = {
+		type: "basic",
+		value: new Buffer(username + ":" + password).toString("base64"),
+	};
+	post.call(sp, app.loginAttempts.href, job, function(err, reply) {
+		if(err) {
+			cb(err, null);
+			return;
+		}
+		get.call(sp, reply.account.href, null, cb); 
+	});
+}
+
+
+module.exports = function(apiId, apiSecret, appId, cb) {
+	var sp = {
 		apiId: apiId,
 		apiSecret: apiSecret,
-		getApplications: getApplications,
-		getTenant: getTenant,
+		get: get,
+		post: post,
+		getApplication: getApplication,
+		createAccount: createAccount,
+		authenticateAccount: authenticateAccount,
 	};
+
+	if(appId && cb) {
+		sp.getApplication(appId, cb);
+	}
+
+	return sp;
 };
+
 
 
 if(require.main === module) {
